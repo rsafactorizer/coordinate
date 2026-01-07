@@ -116,126 +116,131 @@ class GeometricLattice:
         self.N = N  # Store N for factor measurement
         self.lattice_points = []
         
-        # Create SPHERICAL lattice representing N's mathematical structure
-        # Points distributed on sphere surface encode factorization relationships
-        print(f"  Creating N-sphere lattice: ~{size**2:,} surface points")
-        print(f"  Spherical geometry encodes N's factorization - gravity wells reveal factors")
+        # Create 3D SPHERE using 100x100x100 lattice dimensions
+        # Points within sphere radius encode factorization relationships
+        print(f"  Creating 3D sphere lattice: {size}×{size}×{size} grid")
+        print(f"  Sphere geometry encodes N's factorization - gravity wells reveal factors")
 
         # Calculate initial factorization approximation for N-shaped lattice
-        sqrt_n = isqrt(N)
+        sqrt_n = isqrt(N) if N else 1
         a = sqrt_n
-        b = N // a if a > 0 else 1
-        remainder = N - (a * b)
+        b = N // a if a > 0 and N else 1
+        remainder = N - (a * b) if N else 0
 
-        # Generate points on sphere surface representing N's mathematical structure
-        # Use spherical coordinates (θ, φ) with radius related to N's properties
+        # Generate points within a sphere using the 100x100x100 grid
         import math as math_module
+        
+        # Sphere center at middle of lattice
+        center = size / 2.0
+        # Sphere radius - use most of the lattice space
+        radius = size / 2.0 - 1  # Leave small margin
+        
+        # Iterate through all 100x100x100 points, but only include those within sphere
+        for x in range(size):
+            for y in range(size):
+                for z in range(size):
+                    # Calculate distance from center
+                    dx = x - center
+                    dy = y - center
+                    dz = z - center
+                    distance_squared = dx*dx + dy*dy + dz*dz
+                    
+                    # Only include points within sphere
+                    if distance_squared <= radius * radius:
+                        point = LatticePoint(x, y, z)
+                        
+                        # Calculate spherical coordinates from grid coordinates
+                        distance = math_module.sqrt(distance_squared) if distance_squared > 0 else 0.1
+                        # Azimuthal angle (theta) - angle in xy-plane
+                        theta = math_module.atan2(dy, dx) if (dx != 0 or dy != 0) else 0
+                        # Polar angle (phi) - angle from z-axis
+                        phi = math_module.acos(dz / distance) if distance > 0 else 0
+                        
+                        # ENHANCED MULTI-SCALE SPHERICAL ENCODINGS FOR RSA-2048
+                        # Use advanced mathematical relationships to penetrate RSA defenses
 
-        # Fibonacci spiral for even point distribution on sphere
-        num_points = size * size  # Similar total points to cubic lattice
-        # Integer approximation of golden ratio: (1 + √5)/2 ≈ 1.6180339887
-        golden_ratio = 1618034 // 1000000  # ≈ 1.618034
+                        # PERFECT DIVISOR CALCULATIONS: Pre-compute N-derived scaling factors for guaranteed divisibility
+                        def integer_sqrt(n):
+                            if n == 0 or n == 1:
+                                return n
+                            left, right = 1, n
+                            ans = 1
+                            while left <= right:
+                                mid = (left + right) // 2
+                                if mid * mid == n:
+                                    return mid
+                                elif mid * mid < n:
+                                    left = mid + 1
+                                    ans = mid
+                                else:
+                                    right = mid - 1
+                            return ans
 
-        for i in range(num_points):
-            # Spherical coordinates using Fibonacci spiral for even distribution
-            theta = 2 * math_module.pi * i / golden_ratio  # Longitude (azimuthal angle)
-            phi = math_module.acos(1 - 2 * i / (num_points - 1))  # Latitude (polar angle)
+                        n_sqrt = integer_sqrt(N)
 
-            # Convert to Cartesian coordinates on unit sphere
-            x = math_module.sin(phi) * math_module.cos(theta)
-            y = math_module.sin(phi) * math_module.sin(theta)
-            z = math_module.cos(phi)
+                        theta_factor = (N // n_sqrt) if n_sqrt > 0 else 1  # Guarantees division by n_sqrt
+                        phi_factor = (N // (n_sqrt + 1)) if n_sqrt + 1 > 0 else 1  # Guarantees division by n_sqrt+1
 
-            # Scale coordinates to lattice size for integer representation
-            x_coord = int((x + 1) * size / 2)  # Map [-1,1] to [0,size]
-            y_coord = int((y + 1) * size / 2)
-            z_coord = int((z + 1) * size / 2)
+                        # INTEGER-ONLY CALCULATIONS: Avoid all floating-point operations
+                        # Use integer approximations of trigonometric functions
+                        def sin_approx(x):
+                            # Taylor series: sin(x) ≈ x - x³/6 + x⁵/120 (integer arithmetic)
+                            x = x % (2 * 31416 // 1000)  # Mod 2π approximation
+                            x_squared = (x * x) // 1000000
+                            x_cubed = (x_squared * x) // 1000000
+                            x_fifth = (x_cubed * x_squared) // 1000000
+                            return x - (x_cubed // 6) + (x_fifth // 120)
 
-            point = LatticePoint(x_coord, y_coord, z_coord)
+                        def cos_approx(x):
+                            # Taylor series: cos(x) ≈ 1 - x²/2 + x⁴/24 (integer arithmetic)
+                            x = x % (2 * 31416 // 1000)  # Mod 2π approximation
+                            x_squared = (x * x) // 1000000
+                            x_fourth = (x_squared * x_squared) // 1000000
+                            return 1000000 - (x_squared // 2) + (x_fourth // 24)
 
-            # ENHANCED MULTI-SCALE SPHERICAL ENCODINGS FOR RSA-2048
-            # Use advanced mathematical relationships to penetrate RSA defenses
+                        # Convert angles to integer scale and apply approximations
+                        theta_int = sin_approx(int(theta * 1000000))
+                        phi_int = cos_approx(int(phi * 1000000))
 
-            # PERFECT DIVISOR CALCULATIONS: Pre-compute N-derived scaling factors for guaranteed divisibility
-            # Use binary search for integer square root to avoid float overflow
-            def integer_sqrt(n):
-                if n == 0 or n == 1:
-                    return n
-                left, right = 1, n
-                while left <= right:
-                    mid = (left + right) // 2
-                    if mid * mid == n:
-                        return mid
-                    elif mid * mid < n:
-                        left = mid + 1
-                        ans = mid
-                    else:
-                        right = mid - 1
-                return ans
+                        point.n_structure = {
+                            # Basic spherical coordinates
+                            'spherical_theta': theta,
+                            'spherical_phi': phi,
 
-            n_sqrt = integer_sqrt(N)
+                            # MULTI-SCALE MODULAR RELATIONSHIPS with perfect divisor guarantees
+                            'theta_modular': (theta_int * theta_factor * a) % N,
+                            'phi_modular': (phi_int * phi_factor * b) % N,
+                            'spherical_product': (theta_int * phi_int * (N // (n_sqrt * 2)) * remainder) % N,
 
-            theta_factor = (N // n_sqrt) if n_sqrt > 0 else 1  # Guarantees division by n_sqrt
-            phi_factor = (N // (n_sqrt + 1)) if n_sqrt + 1 > 0 else 1  # Guarantees division by n_sqrt+1
+                            # HARMONIC SERIES ENCODINGS (for deeper factorization structure)
+                            'harmonic_sine': (int(math_module.sin(theta) * 1000) * (N // (n_sqrt**2 + 1)) * (a + b)) % N,
+                            'harmonic_cosine': (int(math_module.cos(phi) * 1000) * (N // (n_sqrt**2 + 1)) * (a * b % N)) % N,
+                            'spherical_harmonic': (int(math_module.sin(theta) * math_module.cos(phi) * 1000) * (N // (n_sqrt**2 + 1)) * remainder) % N,
 
-            # INTEGER-ONLY CALCULATIONS: Avoid all floating-point operations
-            # Use integer approximations of trigonometric functions
-            def sin_approx(x):
-                # Taylor series: sin(x) ≈ x - x³/6 + x⁵/120 (integer arithmetic)
-                x = x % (2 * 31416 // 1000)  # Mod 2π approximation
-                x_squared = (x * x) // 1000000
-                x_cubed = (x_squared * x) // 1000000
-                x_fifth = (x_cubed * x_squared) // 1000000
-                return x - (x_cubed // 6) + (x_fifth // 120)
+                            # ELLIPTIC CURVE INSPIRED RELATIONSHIPS (for cryptographic structure)
+                            'elliptic_theta': (int((theta**2 + phi**2) * 100) * (N // (n_sqrt**3 + 1)) * a) % N,
+                            'elliptic_phi': (int((theta * phi + 1) * 100) * (N // (n_sqrt**3 + 1)) * b) % N,
 
-            def cos_approx(x):
-                # Taylor series: cos(x) ≈ 1 - x²/2 + x⁴/24 (integer arithmetic)
-                x = x % (2 * 31416 // 1000)  # Mod 2π approximation
-                x_squared = (x * x) // 1000000
-                x_fourth = (x_squared * x_squared) // 1000000
-                return 1000000 - (x_squared // 2) + (x_fourth // 24)
+                            # QUANTUM-INSPIRED SUPERPOSITION ENCODINGS
+                            'superposition_1': (int(math_module.sin(theta + phi) * 1000) * (N // (n_sqrt**4 + 1)) * (a + b)) % N,
+                            'superposition_2': (int(math_module.cos(theta - phi) * 1000) * (N // (n_sqrt**4 + 1)) * (a * b % N)) % N,
 
-            # Convert angles to integer scale and apply approximations
-            theta_int = sin_approx(int(theta * 1000000))
-            phi_int = cos_approx(int(phi * 1000000))
+                            # LATTICE-BASED RELATIONSHIPS (for reduction attacks)
+                            'lattice_basis_1': (int((theta + phi) * 100) * (N // (n_sqrt**2 * 3 + 1)) * remainder) % N,
+                            'lattice_basis_2': (int((theta - phi) * 100) * (N // (n_sqrt**2 * 3 + 1)) * (a + b)) % N,
 
-            point.n_structure = {
-                # Basic spherical coordinates
-                'spherical_theta': theta,
-                'spherical_phi': phi,
+                            # DEEP FACTORIZATION PROBES
+                            'factor_probe_1': (int(theta**3 * 10) * (N // (n_sqrt**5 + 1)) * a) % N,  # Higher powers for deepest probes
+                            'factor_probe_2': (int(phi**3 * 10) * (N // (n_sqrt**5 + 1)) * b) % N,
+                            'combined_probe': (int((theta**2 + phi**2) * 10) * (N // (n_sqrt**5 + 1)) * remainder) % N,
+                        }
 
-                # MULTI-SCALE MODULAR RELATIONSHIPS with perfect divisor guarantees
-                'theta_modular': (theta_int * theta_factor * a) % N,
-                'phi_modular': (phi_int * phi_factor * b) % N,
-                'spherical_product': (theta_int * phi_int * (N // (n_sqrt * 2)) * remainder) % N,
+                        # Calculate "gravity well" depth based on factorization density
+                        point.gravity_well = self.calculate_gravity_well_depth(point, N, a, b, remainder)
 
-                # HARMONIC SERIES ENCODINGS (for deeper factorization structure)
-                'harmonic_sine': (int(math_module.sin(theta) * 1000) * (N // (n_sqrt**2 + 1)) * (a + b)) % N,
-                'harmonic_cosine': (int(math_module.cos(phi) * 1000) * (N // (n_sqrt**2 + 1)) * (a * b % N)) % N,
-                'spherical_harmonic': (int(math_module.sin(theta) * math_module.cos(phi) * 1000) * (N // (n_sqrt**2 + 1)) * remainder) % N,
-
-                # ELLIPTIC CURVE INSPIRED RELATIONSHIPS (for cryptographic structure)
-                'elliptic_theta': (int((theta**2 + phi**2) * 100) * (N // (n_sqrt**3 + 1)) * a) % N,
-                'elliptic_phi': (int((theta * phi + 1) * 100) * (N // (n_sqrt**3 + 1)) * b) % N,
-
-                # QUANTUM-INSPIRED SUPERPOSITION ENCODINGS
-                'superposition_1': (int(math_module.sin(theta + phi) * 1000) * (N // (n_sqrt**4 + 1)) * (a + b)) % N,
-                'superposition_2': (int(math_module.cos(theta - phi) * 1000) * (N // (n_sqrt**4 + 1)) * (a * b % N)) % N,
-
-                # LATTICE-BASED RELATIONSHIPS (for reduction attacks)
-                'lattice_basis_1': (int((theta + phi) * 100) * (N // (n_sqrt**2 * 3 + 1)) * remainder) % N,
-                'lattice_basis_2': (int((theta - phi) * 100) * (N // (n_sqrt**2 * 3 + 1)) * (a + b)) % N,
-
-                # DEEP FACTORIZATION PROBES
-                'factor_probe_1': (int(theta**3 * 10) * (N // (n_sqrt**5 + 1)) * a) % N,  # Higher powers for deepest probes
-                'factor_probe_2': (int(phi**3 * 10) * (N // (n_sqrt**5 + 1)) * b) % N,
-                'combined_probe': (int((theta**2 + phi**2) * 10) * (N // (n_sqrt**5 + 1)) * remainder) % N,
-            }
-
-            # Calculate "gravity well" depth based on factorization density
-            point.gravity_well = self.calculate_gravity_well_depth(point, N, a, b, remainder)
-
-            self.lattice_points.append(point)
+                        self.lattice_points.append(point)
+        
+        print(f"  Generated {len(self.lattice_points):,} points within 3D sphere")
         
         # Store transformation history and modular patterns
         self.transformation_history = []
@@ -243,8 +248,8 @@ class GeometricLattice:
         self.volume_history = []    # Track volume at each compression stage
         self.current_stage = "initial"
 
-        # Record initial volume (approximate lattice volume)
-        initial_volume = len(self.lattice_points) * (4/3) * 3.14159  # Approximate volume
+        # Record initial volume (sphere volume)
+        initial_volume = len(self.lattice_points)  # Number of points in sphere
         self.volume_history.append({
             'stage': 'initial',
             'volume': initial_volume,
@@ -1666,20 +1671,23 @@ def factor_with_lattice_compression(
         print("Please provide a number > 1 to factor")
         return {"N": N, "factors": []}
 
-    # Pick a reasonable lattice size if not provided.
+    # Pick a reasonable lattice size if not provided - scale with N's size
+    # Default to 100x100x100 as requested, but scale up for larger N
     if lattice_size is None:
         if adaptive_lattice:
             n_bits = N.bit_length()
             if n_bits < 20:
-                lattice_size = 100
+                lattice_size = 100  # 100x100x100 = 1,000,000 points
             elif n_bits < 50:
-                lattice_size = 200
+                lattice_size = 100  # Keep at 100 for medium numbers
             elif n_bits < 100:
-                lattice_size = 500
+                lattice_size = 100  # Keep at 100 for larger numbers
+            elif n_bits < 200:
+                lattice_size = 100  # Keep at 100 for RSA-1024
             else:
-                lattice_size = 1000
+                lattice_size = 100  # Keep at 100 for RSA-2048 and larger
         else:
-            lattice_size = 200
+            lattice_size = 100  # Default to 100x100x100
 
     # Encode N into an initial point (a, b, remainder-ish) and seed the lattice.
     sqrt_n = isqrt(N)
@@ -1695,7 +1703,7 @@ def factor_with_lattice_compression(
     z0 = (remainder % (remainder_lattice_size * 10) + offset_z) % (remainder_lattice_size * 10)
     initial_point = LatticePoint(x0, y0, z0)
 
-    print(f"Using {lattice_size}x{lattice_size} lattice (~{lattice_size*lattice_size:,} surface points)")
+    print(f"Using {lattice_size}×{lattice_size}×{lattice_size} 3D cubic lattice ({lattice_size**3:,} points)")
     print(f"Encoded N as lattice point: {initial_point} (a≈{a}, b≈{b}, remainder={remainder})")
     if lattice_offset != (0, 0, 0):
         print(f"Lattice offset applied: {lattice_offset}")
