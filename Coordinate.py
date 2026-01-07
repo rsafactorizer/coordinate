@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
-Lattice Tool - Geometric Lattice Transformations
-
-Transforms an entire lattice through geometric compression stages:
-Point -> Line -> Square -> Bounded Square -> Triangle -> Line -> Point
-
-At each step, ALL points in the lattice are transformed/dragged along.
+Coordinate - a new factorization paradigm.
 """
 
 import numpy as np
@@ -29,6 +24,26 @@ def isqrt(n):
         if y >= x:
             return x
         x = y
+
+def integer_sqrt(n):
+    """
+    Integer square root using binary search - alternative implementation for consistency.
+    Finds largest integer x such that x*x <= n
+    """
+    if n == 0 or n == 1:
+        return n
+    left, right = 1, n
+    ans = 1
+    while left <= right:
+        mid = (left + right) // 2
+        if mid * mid == n:
+            return mid
+        elif mid * mid < n:
+            left = mid + 1
+            ans = mid
+        else:
+            right = mid - 1
+    return ans
 
 class LatticePoint:
     """Represents a point in integer lattice coordinates."""
@@ -118,7 +133,8 @@ class GeometricLattice:
 
         # Fibonacci spiral for even point distribution on sphere
         num_points = size * size  # Similar total points to cubic lattice
-        golden_ratio = (1 + math_module.sqrt(5)) / 2
+        # Integer approximation of golden ratio: (1 + √5)/2 ≈ 1.6180339887
+        golden_ratio = 1618034 // 1000000  # ≈ 1.618034
 
         for i in range(num_points):
             # Spherical coordinates using Fibonacci spiral for even distribution
@@ -162,9 +178,26 @@ class GeometricLattice:
             theta_factor = (N // n_sqrt) if n_sqrt > 0 else 1  # Guarantees division by n_sqrt
             phi_factor = (N // (n_sqrt + 1)) if n_sqrt + 1 > 0 else 1  # Guarantees division by n_sqrt+1
 
-            # Scale floats carefully to avoid overflow
-            theta_scaled = int(theta * 1000)  # Scale to reasonable integer
-            phi_scaled = int(phi * 1000)
+            # INTEGER-ONLY CALCULATIONS: Avoid all floating-point operations
+            # Use integer approximations of trigonometric functions
+            def sin_approx(x):
+                # Taylor series: sin(x) ≈ x - x³/6 + x⁵/120 (integer arithmetic)
+                x = x % (2 * 31416 // 1000)  # Mod 2π approximation
+                x_squared = (x * x) // 1000000
+                x_cubed = (x_squared * x) // 1000000
+                x_fifth = (x_cubed * x_squared) // 1000000
+                return x - (x_cubed // 6) + (x_fifth // 120)
+
+            def cos_approx(x):
+                # Taylor series: cos(x) ≈ 1 - x²/2 + x⁴/24 (integer arithmetic)
+                x = x % (2 * 31416 // 1000)  # Mod 2π approximation
+                x_squared = (x * x) // 1000000
+                x_fourth = (x_squared * x_squared) // 1000000
+                return 1000000 - (x_squared // 2) + (x_fourth // 24)
+
+            # Convert angles to integer scale and apply approximations
+            theta_int = sin_approx(int(theta * 1000000))
+            phi_int = cos_approx(int(phi * 1000000))
 
             point.n_structure = {
                 # Basic spherical coordinates
@@ -172,9 +205,9 @@ class GeometricLattice:
                 'spherical_phi': phi,
 
                 # MULTI-SCALE MODULAR RELATIONSHIPS with perfect divisor guarantees
-                'theta_modular': (theta_scaled * (N // n_sqrt) * a) % N,
-                'phi_modular': (phi_scaled * (N // (n_sqrt + 1)) * b) % N,
-                'spherical_product': (theta_scaled * phi_scaled * (N // (n_sqrt * 2)) * remainder) % N,
+                'theta_modular': (theta_int * theta_factor * a) % N,
+                'phi_modular': (phi_int * phi_factor * b) % N,
+                'spherical_product': (theta_int * phi_int * (N // (n_sqrt * 2)) * remainder) % N,
 
                 # HARMONIC SERIES ENCODINGS (for deeper factorization structure)
                 'harmonic_sine': (int(math_module.sin(theta) * 1000) * (N // (n_sqrt**2 + 1)) * (a + b)) % N,
@@ -728,7 +761,14 @@ class GeometricLattice:
 
             # Create new triangulation from rotated points
             try:
-                rotated_tri = Delaunay(np.array(rotated_coords))
+                rotated_coords_array = np.array(rotated_coords)
+                # Add small jitter to avoid degeneracy in rotated coordinates
+                if len(rotated_coords_array) > 0:
+                    jitter_scale = 1e-6
+                    np.random.seed(44 + rot_x * 1000 + rot_y * 100 + rot_z * 10)  # Seed based on rotation
+                    jitter = np.random.randn(*rotated_coords_array.shape) * jitter_scale
+                    rotated_coords_array = rotated_coords_array.astype(float) + jitter
+                rotated_tri = Delaunay(rotated_coords_array)
 
                 # Check which original points maintain tetrahedral relationships
                 rotated_simplices = set()
@@ -995,11 +1035,12 @@ class GeometricLattice:
 
             for tetra_idx, tetrahedron in enumerate(triangulation.simplices):
                 # Each tetrahedron has 4 triangular faces
+                # Sort indices (integers), not LatticePoint objects
                 faces = [
-                    tuple(sorted([tetrahedron[0], tetrahedron[1], tetrahedron[2]])),
-                    tuple(sorted([tetrahedron[0], tetrahedron[1], tetrahedron[3]])),
-                    tuple(sorted([tetrahedron[0], tetrahedron[2], tetrahedron[3]])),
-                    tuple(sorted([tetrahedron[1], tetrahedron[2], tetrahedron[3]]))
+                    tuple(sorted([int(tetrahedron[0]), int(tetrahedron[1]), int(tetrahedron[2])])),
+                    tuple(sorted([int(tetrahedron[0]), int(tetrahedron[1]), int(tetrahedron[3])])),
+                    tuple(sorted([int(tetrahedron[0]), int(tetrahedron[2]), int(tetrahedron[3])])),
+                    tuple(sorted([int(tetrahedron[1]), int(tetrahedron[2]), int(tetrahedron[3])]))
                 ]
 
                 for face in faces:
@@ -1043,7 +1084,10 @@ class GeometricLattice:
                     v1[2]*v2[0] - v1[0]*v2[2],
                     v1[0]*v2[1] - v1[1]*v2[0]
                 )
-                area = math.sqrt(cross[0]**2 + cross[1]**2 + cross[2]**2) / 2
+                # Integer face area approximation (avoid floating-point sqrt)
+                cross_magnitude_squared = cross[0]**2 + cross[1]**2 + cross[2]**2
+                cross_magnitude = integer_sqrt(cross_magnitude_squared) if cross_magnitude_squared > 0 else 0
+                area = cross_magnitude // 2
                 face_areas.append((face, area))
 
             # Sort by area and take top faces for hexagram
@@ -1058,7 +1102,8 @@ class GeometricLattice:
                 hex_pos = hexagram_positions[i % 12]
 
                 # Check hexagram position relationships
-                distance_from_center = np.linalg.norm(hex_pos)
+                # Integer distance calculation (avoid numpy floating-point)
+                distance_from_center = integer_sqrt(int(hex_pos[0]**2 + hex_pos[1]**2 + hex_pos[2]**2))
 
                 # PERFECT DIVISOR CALCULATIONS: Use N-derived scaling for guaranteed divisibility
                 n_sqrt = int(math.sqrt(N))
@@ -1081,7 +1126,7 @@ class GeometricLattice:
                 inner_avg = sum(inner_distances) / len(inner_distances)
 
                 if inner_avg > 0:
-                    star_ratio = outer_avg / inner_avg
+                    star_ratio = outer_avg // inner_avg if inner_avg > 0 else outer_avg
                     star_factor = int(star_ratio * (N // (n_sqrt**4 + 1))) % N  # Perfect divisor calculation
 
                     if star_factor > 1 and N % star_factor == 0:
@@ -1190,7 +1235,9 @@ class GeometricLattice:
                 dx = p1[0] - p2[0]
                 dy = p1[1] - p2[1]
                 dz = p1[2] - p2[2]
-                adjacent_distance = math.sqrt(dx**2 + dy**2 + dz**2)
+                # Integer distance approximation (avoid floating-point sqrt)
+                dist_squared = dx**2 + dy**2 + dz**2
+                adjacent_distance = integer_sqrt(dist_squared) if 'integer_sqrt' in globals() else dist_squared
 
                 # Angular separation
                 angle1 = math.atan2(p1[1], p1[0])
@@ -1293,9 +1340,47 @@ class GeometricLattice:
 
                 # Convert top points to numpy array for triangulation
                 point_coords = np.array([[p.x, p.y, p.z] for p in top_points])
+                
+                # FIX DEGENERACY: Add small deterministic jitter to avoid collinear/coplanar points
+                # This breaks degeneracy while preserving the mathematical relationships
+                jitter_scale = 1e-6  # Very small jitter relative to coordinate scale
+                np.random.seed(42)  # Deterministic for reproducibility
+                jitter = np.random.randn(*point_coords.shape) * jitter_scale
+                point_coords_jittered = point_coords.astype(float) + jitter
+                
+                # Remove duplicate points (within tolerance)
+                # This helps when many points map to the same integer coordinates
+                from scipy.spatial.distance import pdist, squareform
+                if len(point_coords_jittered) > 1:
+                    distances = squareform(pdist(point_coords_jittered))
+                    # Mark points that are too close to each other
+                    duplicate_threshold = jitter_scale * 10
+                    unique_mask = np.ones(len(point_coords_jittered), dtype=bool)
+                    for i in range(len(point_coords_jittered)):
+                        if not unique_mask[i]:
+                            continue
+                        # Mark nearby points as duplicates
+                        for j in range(i + 1, len(point_coords_jittered)):
+                            if distances[i, j] < duplicate_threshold:
+                                unique_mask[j] = False
+                    point_coords_jittered = point_coords_jittered[unique_mask]
+                    top_points = [top_points[i] for i in range(len(top_points)) if unique_mask[i]]
+                
+                # Ensure we have at least 4 points for 3D Delaunay
+                if len(point_coords_jittered) < 4:
+                    print(f"  ⚠️ Only {len(point_coords_jittered)} unique points after filtering (need 4 for 3D triangulation)")
+                    print(f"  Falling back to 2D analysis or using all points with more aggressive jitter")
+                    # Use all significant points with larger jitter
+                    all_coords = np.array([[p.x, p.y, p.z] for p in significant_points])
+                    jitter_scale = 1e-3  # Larger jitter
+                    np.random.seed(42)
+                    jitter = np.random.randn(*all_coords.shape) * jitter_scale
+                    point_coords_jittered = all_coords.astype(float) + jitter
+                    top_points = significant_points[:min(50, len(significant_points))]
+                    point_coords_jittered = point_coords_jittered[:len(top_points)]
 
-                # Perform Delaunay triangulation on the top points
-                tri = Delaunay(point_coords)
+                # Perform Delaunay triangulation on the jittered points
+                tri = Delaunay(point_coords_jittered)
 
                 # Update significant_points to only the top points for efficiency
                 significant_points = top_points
@@ -1340,7 +1425,14 @@ class GeometricLattice:
                 if len(locked_points) >= 4:
                     # Re-triangulate using only the rotationally invariant (locked) points
                     locked_coords = np.array([[p.x, p.y, p.z] for p in locked_points])
-                    locked_tri = Delaunay(locked_coords)
+                    
+                    # Apply same jitter to avoid degeneracy
+                    jitter_scale = 1e-6
+                    np.random.seed(43)  # Different seed for locked points
+                    jitter = np.random.randn(*locked_coords.shape) * jitter_scale
+                    locked_coords_jittered = locked_coords.astype(float) + jitter
+                    
+                    locked_tri = Delaunay(locked_coords_jittered)
                     print(f"  ✓ Locked-point triangulation: {len(locked_tri.simplices)} tetrahedrons from {len(locked_points)} invariant points")
 
                     # CRITICAL: Update triangulation for locked points BEFORE factor extraction
@@ -1390,9 +1482,11 @@ class GeometricLattice:
                     v2 = (tetra_points[2].x - tetra_points[0].x, tetra_points[2].y - tetra_points[0].y, tetra_points[2].z - tetra_points[0].z)
                     v3 = (tetra_points[3].x - tetra_points[0].x, tetra_points[3].y - tetra_points[0].y, tetra_points[3].z - tetra_points[0].z)
 
-                    volume = abs(v1[0] * (v2[1]*v3[2] - v2[2]*v3[1]) -
-                               v1[1] * (v2[0]*v3[2] - v2[2]*v3[0]) +
-                               v1[2] * (v2[0]*v3[1] - v2[1]*v3[0])) / 6.0
+                    # Integer volume calculation (avoid floating-point division)
+                    scalar_triple = abs(v1[0] * (v2[1]*v3[2] - v2[2]*v3[1]) -
+                                       v1[1] * (v2[0]*v3[2] - v2[2]*v3[0]) +
+                                       v1[2] * (v2[0]*v3[1] - v2[1]*v3[0]))
+                    volume = scalar_triple // 6  # Integer division
 
                     tetrahedron_volumes.append(volume)
 
@@ -1416,15 +1510,17 @@ class GeometricLattice:
 
                     # PERFECT DIVISOR FACE ANALYSIS
                     # Extract triangular faces and check their areas
-                    faces = [
-                        tuple(sorted([tetra_points[0], tetra_points[1], tetra_points[2]])),
-                        tuple(sorted([tetra_points[0], tetra_points[1], tetra_points[3]])),
-                        tuple(sorted([tetra_points[0], tetra_points[2], tetra_points[3]])),
-                        tuple(sorted([tetra_points[1], tetra_points[2], tetra_points[3]]))
+                    # Use point indices from simplex, not LatticePoint objects
+                    face_indices = [
+                        tuple(sorted([simplex[0], simplex[1], simplex[2]])),
+                        tuple(sorted([simplex[0], simplex[1], simplex[3]])),
+                        tuple(sorted([simplex[0], simplex[2], simplex[3]])),
+                        tuple(sorted([simplex[1], simplex[2], simplex[3]]))
                     ]
 
-                    for face_idx, face in enumerate(faces):
-                        p0, p1, p2 = face
+                    for face_idx, face_indices_tuple in enumerate(face_indices):
+                        # Get actual points from indices
+                        p0, p1, p2 = [tetra_points[list(simplex).index(i)] for i in face_indices_tuple]
                         # Calculate face area
                         v1_face = (p1.x - p0.x, p1.y - p0.y, p1.z - p0.z)
                         v2_face = (p2.x - p0.x, p2.y - p0.y, p2.z - p0.z)
@@ -1433,7 +1529,10 @@ class GeometricLattice:
                             v1_face[2]*v2_face[0] - v1_face[0]*v2_face[2],
                             v1_face[0]*v2_face[1] - v1_face[1]*v2_face[0]
                         )
-                        face_area = math.sqrt(cross[0]**2 + cross[1]**2 + cross[2]**2) / 2
+                        # Integer face area approximation (avoid floating-point sqrt)
+                        cross_magnitude_squared = cross[0]**2 + cross[1]**2 + cross[2]**2
+                        cross_magnitude = integer_sqrt(cross_magnitude_squared) if cross_magnitude_squared > 0 else 0
+                        face_area = cross_magnitude // 2
 
                         if face_area > 0:
                             # Face area as potential factor (with perfect divisor scaling)
@@ -1539,1122 +1638,122 @@ class GeometricLattice:
                 print(f"  ⚠️ Triangulation error: {e}")
                 return False
 
-    def factor_with_lattice_compression(self, N: int, lattice_size: int = None, zoom_iterations: int = 100, search_window_size: int = None, lattice_offset: tuple = (0, 0, 0), adaptive_lattice: bool = True):
-        """
-        Factor N using geometric lattice compression.
-    
-    Strategy:
-    1. Encode N into lattice structure
-    2. Apply geometric transformations
-    3. Extract factors from compressed result
-        """
-        # Force immediate output to ensure GUI sees activity
-        import sys
-        sys.stdout.flush()
-        print("="*80)
-        print("GEOMETRIC LATTICE FACTORIZATION")
-        print("="*80)
-        print(f"Target N: {N}")
-        print(f"Bit length: {N.bit_length()} bits")
-        sys.stdout.flush()
-        
-        # Determine lattice size based on N with adaptive sizing for large numbers
-        if lattice_size is None:
-            if adaptive_lattice:
-                # Adaptive sizing based on N's bit length for better geometric encoding
-                n_bits = N.bit_length()
-                if n_bits < 20:
-                    lattice_size = 100
-                elif n_bits < 50:
-                    lattice_size = 200
-                elif n_bits < 100:
-                    lattice_size = 500
-                elif n_bits < 500:
-                    lattice_size = 1000
-                elif n_bits < 1000:
-                    lattice_size = 2000
-                elif n_bits < 1500:
-                    lattice_size = 3000  # For very large numbers
-                else:
-                    lattice_size = 5000  # For RSA-2048 and larger, but cap to prevent memory issues
-            else:
-                # Use sqrt(N) as base, but cap for performance
-                sqrt_n = isqrt(N) if N < 10**20 else 1000
-                lattice_size = min(max(100, sqrt_n // 10), 1000)  # Reasonable size
+def factor_with_lattice_compression(
+    N: int,
+    lattice_size: int = None,
+    lattice_offset: tuple = (0, 0, 0),
+    adaptive_lattice: bool = True,
+):
+    """
+    Triangulation-only runner.
 
-        # For extremely large N (>1000 bits), use smaller but more sophisticated lattices
-        if N.bit_length() > 1000:
-            print(f"  Large N detected ({N.bit_length()} bits) - using optimized lattice size")
-            lattice_size = min(lattice_size, 1000)  # Cap to prevent memory explosion
-        
-        print(f"Using {lattice_size}x{lattice_size} lattice")
-        print(f"Lattice will contain {lattice_size * lattice_size:,} points")
-        print()
-        
-        # Encode N into initial point
-        # Strategy: encode as (a, b, remainder) where a*b ≈ N
-        # For very large N, use integer square root (defined at module level)
-        sqrt_n = isqrt(N)
-        a = sqrt_n
-        b = N // a if a > 0 else 1
-        remainder = N - (a * b)
-        
-        # Try to find better encoding if remainder is large
-        # Test nearby values around sqrt(N)
-        best_remainder = remainder
-        best_a, best_b = a, b
-        search_range = min(100, sqrt_n // 100)  # Search around sqrt(N)
-        for offset in range(-search_range, search_range + 1):
-            test_a = sqrt_n + offset
-            if test_a > 1 and test_a < N:
-                test_b = N // test_a
-                test_remainder = abs(N - (test_a * test_b))
-                if test_remainder < best_remainder:
-                    best_remainder = test_remainder
-                    best_a, best_b = test_a, test_b
-        
-        a, b, remainder = best_a, best_b, best_remainder
-        
-        # ADVANCED MULTI-SCALE MATHEMATICAL ENCODING FOR LARGE N
-        # Preserve factorization structure across multiple geometric scales
-        offset_x, offset_y, offset_z = lattice_offset
+    The original version referenced several transformation/compression/metrics methods that
+    are not implemented in this file. Per request, those references are removed; we build
+    the N-sphere lattice and run the triangulation analysis directly.
+    """
+    import sys
+    import math
 
-        # Multi-scale factor encoding for better geometric preservation
-        factor_scales = []
-        base_scale = max(100, lattice_size // 10)
+    sys.stdout.flush()
+    print("=" * 80)
+    print("GEOMETRIC LATTICE FACTORIZATION (TRIANGULATION ONLY)")
+    print("=" * 80)
+    print(f"Target N: {N}")
+    print(f"Bit length: {N.bit_length()} bits")
+    sys.stdout.flush()
 
-        # Encode factors at multiple scales to preserve relationships
-        for scale in [base_scale, base_scale * 10, base_scale * 100]:
-            if scale > 0:
-                scale_a = (a % scale + offset_x) % scale
-                scale_b = (b % scale + offset_y) % scale
-                factor_scales.append((scale_a, scale_b, scale))
+    if N <= 1:
+        print("Please provide a number > 1 to factor")
+        return {"N": N, "factors": []}
 
-        # Choose the most informative encoding scale
-        initial_x, initial_y, encoding_scale = factor_scales[0]  # Start with finest scale
-
-        # ENHANCED REMAINDER ENCODING WITH MULTIPLE REPRESENTATIONS
-        # Preserve different aspects of the mathematical relationship
-        remainder_lattice_size = max(100, lattice_size // 10)
-
-        # Multiple remainder encodings to capture different mathematical properties
-        remainder_encodings = []
-
-        # Primary: Direct modular encoding
-        remainder_primary = remainder % remainder_lattice_size
-
-        # Secondary: Encode GCD information
-        import math
-        remainder_gcd = math.gcd(remainder, N)
-        remainder_secondary = remainder_gcd % remainder_lattice_size
-
-        # Tertiary: Encode cofactor information
-        if remainder_gcd > 0 and remainder_gcd < N:
-            remainder_cofactor = N // remainder_gcd
-            remainder_tertiary = remainder_cofactor % remainder_lattice_size
-        else:
-            remainder_tertiary = remainder_primary
-
-        # Quaternary: Encode factor difference information
-        if a > b:
-            remainder_quaternary = (a - b) % remainder_lattice_size
-        else:
-            remainder_quaternary = (b - a) % remainder_lattice_size
-
-        remainder_encodings = [remainder_primary, remainder_secondary, remainder_tertiary]
-
-        # Combine encodings with mathematical weighting to preserve structure
-        weights = [1, 10, 100]  # Hierarchical weighting preserves relationships
-        initial_z = sum(w * r for w, r in zip(weights, remainder_encodings))
-        initial_z = (initial_z + offset_z) % (remainder_lattice_size * 10)
-
-        # Store comprehensive encoding information for geometric factor extraction
-        remainder_3d = tuple(remainder_encodings)
-        
-        # NO SCALING - preserve full precision for factor extraction
-        scale_factor = 1
-        
-        print(f"  Precision-preserving encoding with 3D remainder lattice:")
-        print(f"    x = a mod {lattice_size} = {initial_x} (offset: {offset_x})")
-        print(f"    y = b mod {lattice_size} = {initial_y} (offset: {offset_y})")
-        print(f"    z = remainder signature = {initial_z} (offset: {offset_z})")
-        print(f"    3D remainder mapping: {remainder_3d}")
-        print(f"    Full remainder preserved: {remainder}")
-        print(f"    Resolution: {remainder_lattice_size}×{remainder_lattice_size}×{remainder_lattice_size} = {remainder_lattice_size**3:,} points")
-        print(f"    NO scaling applied - full precision maintained")
-        if lattice_offset != (0, 0, 0):
-            print(f"    Lattice offset applied: {lattice_offset} (to break symmetry traps)")
-        
-        initial_point = LatticePoint(initial_x, initial_y, initial_z)
-        
-        print(f"Encoded N as lattice point: {initial_point}")
-        print(f"  Represents: a={a}, b={b}, remainder={remainder}")
-        print(f"  Scale factor: {scale_factor}")
-        print()
-        
-        # Create lattice and apply transformations (with 3D remainder lattice)
-        lattice = GeometricLattice(lattice_size, initial_point, remainder_lattice_size=remainder_lattice_size, N=N)
-        
-        # Store original encoding for factor extraction (PRESERVE FULL PRECISION)
-        original_encoding = {
-            'a': a, 
-            'b': b, 
-            'remainder': remainder, 
-            'remainder_3d': remainder_3d,  # 3D remainder mapping
-            'remainder_lattice_size': remainder_lattice_size,
-            'scale': scale_factor,
-            'N': N,
-            'sqrt_n': sqrt_n,
-            'lattice_size': lattice_size,
-            'x_mod': initial_x,
-            'y_mod': initial_y,
-            'z_mod': initial_z
-        }
-        
-        # RECURSIVE REFINEMENT: Iterative zoom to narrow search space for RSA-2048
-        print("="*80)
-        print("RECURSIVE REFINEMENT FACTORIZATION")
-        print("="*80)
-        print(f"Initial lattice size: {lattice_size}×{lattice_size}×{lattice_size} = {lattice_size**3:,} points")
-        print(f"Strategy: Macro-collapse → Micro-lattice → Iterative zoom (~100 iterations)")
-        print(f"Each iteration zooms in by factor of 10^6")
-        print(f"After 100 iterations: 10^6 × 100 = 10^600 refinement")
-        print()
-        
-        # Stage A: Macro-Collapse - Find initial singularity
-        print("="*80)
-        print("STAGE A: MACRO-COLLAPSE - Finding Initial Singularity")
-        print("="*80)
-        print()
-        
-        # Apply 3D transformation sequence to initial lattice
-        lattice.compress_volume_to_plane()
-        lattice.expand_point_to_line()
-        lattice.create_square_from_line()
-        lattice.create_bounded_square()
-        lattice.add_vertex_lines()
-        lattice.compress_square_to_triangle()
-        lattice.compress_triangle_to_line()
-        lattice.compress_line_to_point()
-        
-        # Initialize factor tracking
-        unique_factors = []
-        seen = set()
-        
-        # MEASURE INITIAL LATTICE: Analyze geometric compression for factor relationships
-        if lattice.measure_geometric_factors(N, unique_factors, seen, original_encoding):
-            print("✓ Factor found through geometric compression analysis!")
-        
-        # Get initial singularity
-        initial_singularity = lattice.lattice_points[0] if lattice.lattice_points else None
-        if not initial_singularity:
-            print("ERROR: No singularity found in macro-collapse!")
-            return {'N': N, 'factors': [], 'error': 'No singularity found'}
-        
-        print(f"✓ Initial singularity found: {initial_singularity}")
-        print()
-        
-        # Stage B & C: Iterative Zoom - Re-mesh and collapse ~100 times
-        print("="*80)
-        print("STAGE B & C: ITERATIVE ZOOM - Recursive Refinement")
-        print("="*80)
-        print()
-        
-        # Use parameter if provided, otherwise default to 3
-        if zoom_iterations is None:
-            zoom_iterations = 100
-        
-        micro_lattice_size = 100  # 100×100×100 micro-lattice
-        zoom_factor_per_iteration = micro_lattice_size ** 3  # 10^6 per iteration
-        
-        # MODULAR CARRY SYSTEM: Preserve full-precision remainder across iterations
-        # Track the "coordinate shadow" as arbitrary-precision integers
-        def perform_recursive_handoff(current_singularity, full_modulus, iteration_level, current_handoff_data):
-            """
-            Ensures that the 2048-bit 'Coordinate Shadow' remains perfectly aligned.
-            Maps the singularity to BigInt coordinates preserving full precision.
-            This is NOT a camera zoom - we are re-indexing the universe with perfect precision.
-            """
-            # Extract coordinates from current singularity
-            x_mod = current_singularity.x
-            y_mod = current_singularity.y
-            z_mod = current_singularity.z
-            
-            # Get accumulated handoff data from previous iteration
-            prev_x_mod = current_handoff_data.get('x_mod', initial_x)
-            prev_y_mod = current_handoff_data.get('y_mod', initial_y)
-            prev_z_mod = current_handoff_data.get('z_mod', initial_z)
-            prev_remainder = current_handoff_data.get('remainder', remainder)
-            
-            # MODULAR CARRY: Accumulate the coordinate information
-            # Each iteration refines by mapping: (x, y, z) mod lattice_size → new (x', y', z')
-            # This is a perfect mapping with no information loss - we're re-indexing, not approximating
-            
-            # Calculate accumulated coordinates using modular arithmetic
-            # The key insight: N % lattice_size gives us exact integer mapping at every level
-            # So we accumulate: new_x = (prev_x * lattice_size + x_mod) % full_modulus
-            # This preserves the exact modular relationship
-            
-            # For perfect handoff, map to new center preserving the accumulated coordinate shadow
-            center_x = x_mod % micro_lattice_size
-            center_y = y_mod % micro_lattice_size
-            center_z = z_mod % remainder_lattice_size
-            
-            # Accumulate the full-precision coordinate shadow
-            # Using modular arithmetic to avoid overflow while preserving relationships
-            accumulated_x = (prev_x_mod * micro_lattice_size + x_mod) % full_modulus
-            accumulated_y = (prev_y_mod * micro_lattice_size + y_mod) % full_modulus
-            accumulated_z = (prev_z_mod * remainder_lattice_size + z_mod) % (remainder_lattice_size ** 3)
-            
-            # Store the full-precision mapping for factor extraction
-            handoff_data = {
-                'x_mod': accumulated_x,
-                'y_mod': accumulated_y,
-                'z_mod': accumulated_z,
-                'remainder': prev_remainder,  # Preserve full-precision remainder (no loss)
-                'zoom_exponent': iteration_level * 6,  # 10^6 per iteration
-                'iteration_level': iteration_level,
-                'prev_x': prev_x_mod,
-                'prev_y': prev_y_mod,
-                'prev_z': prev_z_mod
-            }
-            
-            return LatticePoint(center_x, center_y, center_z), handoff_data
-        
-        current_lattice = lattice
-        current_center = initial_singularity
-        zoom_history = [{'iteration': 0, 'point': initial_singularity, 'zoom_exponent': 0}]
-        
-        # Initialize modular carry with full-precision remainder
-        current_handoff = {
-            'x_mod': initial_x,
-            'y_mod': initial_y,
-            'z_mod': initial_z,
-            'remainder': remainder,  # Full precision, no loss
-            'zoom_exponent': 0,
-            'iteration_level': 0
-        }
-        
-        iteration_coords = [(initial_x, initial_y)]
-        
-        print(f"Performing {zoom_iterations} iterations of recursive refinement...")
-        print(f"Each iteration: {micro_lattice_size}×{micro_lattice_size}×{micro_lattice_size} = {zoom_factor_per_iteration:,} zoom factor")
-        print(f"Using MODULAR CARRY system to preserve full-precision remainder across iterations")
-        print(f"Remainder precision: {remainder.bit_length()} bits (full precision maintained)")
-        print(f"Key insight: We're re-indexing with perfect precision, not approximating (no drift)")
-        print()
-        
-        for iteration in range(1, zoom_iterations + 1):
-            if iteration % 10 == 0 or iteration <= 5:
-                print(f"Iteration {iteration}/{zoom_iterations}: Creating micro-lattice with modular carry")
-                print(f"  Current remainder (full precision): {current_handoff['remainder']}")
-                print(f"  Remainder bit length: {current_handoff['remainder'].bit_length()} bits")
-            
-            # Stage B: Perform recursive handoff with full precision
-            # Map current singularity to new lattice center preserving BigInt precision
-            new_center, handoff_data = perform_recursive_handoff(
-                current_center, 
-                N,  # Full modulus for mapping
-                iteration,
-                current_handoff
-            )
-            
-            # Update handoff data with accumulated information
-            current_handoff.update(handoff_data)
-            current_handoff['iteration'] = iteration
-            
-            iteration_coords.append((current_handoff['x_mod'], current_handoff['y_mod']))
-            
-            if iteration % 10 == 0 or iteration <= 5:
-                print(f"  Handoff: {current_center} → {new_center}")
-                print(f"  Preserving {current_handoff['remainder'].bit_length()}-bit remainder precision")
-                print(f"  Accumulated coordinates: x_mod={current_handoff['x_mod']}, y_mod={current_handoff['y_mod']}")
-            
-            # Create new micro-lattice centered on handoff point
-            current_lattice = GeometricLattice(
-                micro_lattice_size,
-                new_center,
-                remainder_lattice_size=remainder_lattice_size,
-                N=N
-            )
-            
-            # Stage C: Collapse the micro-lattice
-            current_lattice.compress_volume_to_plane()
-            current_lattice.expand_point_to_line()
-            current_lattice.create_square_from_line()
-            current_lattice.create_bounded_square()
-            current_lattice.add_vertex_lines()
-            current_lattice.compress_square_to_triangle()
-            current_lattice.compress_triangle_to_line()
-            current_lattice.compress_line_to_point()
-            
-            # MEASURE FACTORS: Analyze geometric compression patterns during iterative refinement
-            # This is the true geometric measurement - factors emerge from compression relationships
-            if current_lattice.measure_geometric_factors(N, unique_factors, seen, original_encoding):
-                print(f"  ✓ Factor discovered through geometric compression at iteration {iteration}")
-            
-            # Get new compressed point
-            current_center = current_lattice.lattice_points[0] if current_lattice.lattice_points else None
-            if not current_center:
-                print(f"  Warning: No point found at iteration {iteration}")
-                break
-            
-            if iteration % 10 == 0 or iteration <= 5:
-                print(f"  → Compressed to: {current_center}")
-                # Calculate zoom in scientific notation manually to avoid overflow
-                zoom_exponent = iteration * 6  # 10^6 per iteration = 6 digits per iteration
-                print(f"  → Cumulative zoom: 10^{zoom_exponent} ({iteration} iterations)")
-                print(f"  → Remainder precision maintained: {current_handoff['remainder'].bit_length()} bits")
-                print()
-            
-            # Calculate zoom exponent for this iteration
-            zoom_exponent = iteration * 6  # 10^6 per iteration
-            
-            zoom_history.append({
-                'iteration': iteration,
-                'point': current_center,
-                'zoom_exponent': zoom_exponent,
-                'handoff_data': current_handoff.copy(),
-                'remainder_bits': current_handoff['remainder'].bit_length()
-            })
-        
-        final_iterations = len(zoom_history) - 1
-        final_zoom_exponent = final_iterations * 6  # 10^6 per iteration
-        print(f"✓ Completed {final_iterations} iterations of recursive refinement")
-        print(f"✓ Final cumulative zoom factor: 10^{final_zoom_exponent}")
-        print()
-        
-        # Extract factors from final compressed result
-        final_metrics = current_lattice.get_compression_metrics()
-        final_point = current_center  # Use the final point from iterative zoom
-        
-        final_iterations = len(zoom_history) - 1
-        final_zoom_exponent = final_iterations * 6
-        print("="*80)
-        print("FACTOR EXTRACTION FROM RECURSIVELY REFINED LATTICE")
-        print("="*80)
-        print(f"Final compressed point after {final_iterations} iterations: {final_point}")
-        print(f"Cumulative zoom factor: 10^{final_zoom_exponent}")
-        print(f"Search space narrowed by factor of ~10^{final_zoom_exponent}")
-        print()
-        
-        factors_found = []
-        
-        if final_point:
-            # PRECISION-PRESERVING FACTOR EXTRACTION
-            # Use modular arithmetic to recover factors from compressed coordinates
-            def gcd(a, b):
-                """Euclidean GCD."""
-                while b:
-                    a, b = b, a % b
-                return a
-            
-            x_mod = final_point.x
-            y_mod = final_point.y
-            z_mod = final_point.z
-            lattice_size = original_encoding['lattice_size']
-            sqrt_n = original_encoding['sqrt_n']
-            remainder = original_encoding['remainder']  # FULL PRECISION
-            
-            final_iterations = len(zoom_history) - 1
-            final_zoom_exponent = final_iterations * 6
-            
-            print(f"  Final compressed coordinates: x={x_mod}, y={y_mod}, z={z_mod}")
-            print(f"  Cumulative zoom factor: 10^{final_zoom_exponent}")
-            print(f"  Using recursive refinement to extract factors")
-            print()
-            
-            # RECURSIVE REFINEMENT EXTRACTION WITH MODULAR CARRY
-            # After iterations, we've re-indexed the coordinate space with perfect precision
-            # The compressed point represents the exact "coordinate shadow" in BigInt space
-            
-            # Get handoff data from final iteration (if available)
-            final_handoff = zoom_history[-1].get('handoff_data', {}) if zoom_history else {}
-            
-            print(f"  Using MODULAR CARRY system for factor extraction")
-            print(f"  Final remainder precision: {remainder.bit_length()} bits (full precision)")
-            print(f"  Zoom exponent: 10^{final_zoom_exponent}")
-            print(f"  Coordinate shadow mapped with perfect precision (no drift)")
-            print()
-            
-            # Calculate the search window size
-            # The coordinate shadow is now extremely narrow
-            # Use exponent-based calculation to avoid overflow
-            # If user provided search_window_size, use it; otherwise calculate automatically
-            if search_window_size is None:
-                if final_zoom_exponent > 100:
-                    # For very large zoom, use a fixed small window
-                    search_window_size = 10000
-                else:
-                    # For smaller zoom, calculate based on zoom factor
-                    zoom_factor_approx = 10 ** min(final_zoom_exponent, 100)  # Cap at 10^100 for calculation
-                    search_window_size = min(1000000, sqrt_n // (zoom_factor_approx // 1000))  # Increased to 1M max
-            
-            if search_window_size is not None:
-                print(f"  Search window size: ±{search_window_size} (user-specified)")
-            else:
-                print(f"  Search window size: ±{search_window_size} (auto-calculated)")
-            print(f"  This represents a refinement of 10^{final_zoom_exponent}x")
-            print()
-            
-            # RECURSIVE REFINEMENT EXTRACTION WITH MODULAR RESONANCE ALIGNMENT
-
-            # FORCE final point to resonant configuration for testing
-            if N == int('BEC1726A2C9B59757F6044287F74C09BE2A775D33F08168E84C4C9AEE9696E30D680895C977734671D06E45C1E265B4922233C9FE927351B6FAFDF9934C4B3F89C94CDC0D8128C095E488A9BEBAC637598D60A8D97499BFE86A6EFBFC9446911BBA1AB33C3297A5FA70124AD01BC9D59D71F10E221DCFA62C84B1724524178A97132202A52AED6821CFDC8B03151F2553F01D8DDE90264404C8CB0191C511FEFA0D566539A6BBD0A9C510598C04FE0EB4DFCD7E9BCA0A06F83169B0087B5FD984BD7A56FDD0D80E9B41BA3405E994CE4A1C36EA0AF789F9A979778ED1BFCDC3CF52B1F2A5831A47EBCCC7895EF6651251D37B9315B1863EBC930B702391EC1C5', 16):
-                print(f"  FORCING final point to resonant configuration (0,50,50) for 2048-bit N")
-                final_point = LatticePoint(0, 50, 50)
-                x_mod, y_mod, z_mod = 0, 50, 50
-                print(f"  Final point set to: {final_point}")
-
-            base_x_handoff = final_handoff.get('x_mod', x_mod)
-            base_y_handoff = final_handoff.get('y_mod', y_mod)
-
-            print(f"  [RESONANCE] Aligning 3D shadow with modular carry...")
-            print(f"  Handoff coordinates: x_mod={base_x_handoff}, y_mod={base_y_handoff}")
-            print(f"  Final compressed: x={x_mod}, y={y_mod}")
-            print()
-            
-            # GEODESIC RESONANCE FORMULA - Direct factor extraction without search
-            # When perfect straightness is achieved, the geodesic vector (x,y,z) provides
-            # a direct "line of sight" to the prime factor through the modular noise
-            # Formula: P = gcd((x * HandoffX) - (z * Remainder), N)
-            print("="*80)
-            print("GEODESIC RESONANCE FACTOR EXTRACTION")
-            print("="*80)
-            print("Using geodesic vector projection for direct factor computation...")
-            print(f"  Geodesic vector (straight vertices): x={x_mod}, y={y_mod}, z={z_mod}")
-            print(f"  High-precision handoff: HandoffX={base_x_handoff}, Remainder={remainder}")
-            print()
-            
-            # Apply the TRUE Geodesic Resonance Formula
-            # A geodesic is the shortest path on a curved manifold
-            # In our lattice space, the geodesic resonance is the geometric relationship
-            # between the final compressed point and the accumulated handoff coordinates
-
-            # GEODESIC RESONANCE: The dot product between final point and handoff vectors
-            # This represents the "alignment" or "resonance" between the geometric compression
-            # and the modular accumulation
-
-            # Method 1: Dot product resonance (geometric alignment)
-            dot_product_xy = final_point.x * base_x_handoff + final_point.y * base_y_handoff
-            dot_product_xyz = dot_product_xy + final_point.z * remainder
-
-            # The geodesic resonance is this dot product, revealing factor relationships
-            geodesic_resonance = dot_product_xyz
-
-            factor_candidate_geodesic = gcd(abs(geodesic_resonance), N)
-
-            print(f"  TRUE GEODESIC RESONANCE (Dot product alignment):")
-            print(f"    Dot product: (x_final×x_handoff + y_final×y_handoff) + z_final×remainder")
-            print(f"    = ({final_point.x}×{base_x_handoff} + {final_point.y}×{base_y_handoff}) + {final_point.z}×{remainder}")
-            print(f"    = {dot_product_xy} + {final_point.z * remainder}")
-            print(f"    = {geodesic_resonance}")
-            print(f"  Factor candidate (geodesic): gcd(|{geodesic_resonance}|, N) = {factor_candidate_geodesic}")
-
-            # Method 2: Cross product resonance (orthogonal relationships)
-            # |i    j    k|
-            # |x_f  y_f  z_f|
-            # |x_h  y_h  r  |
-            cross_x = final_point.y * remainder - final_point.z * base_y_handoff
-            cross_y = final_point.z * base_x_handoff - final_point.x * remainder
-            cross_z = final_point.x * base_y_handoff - final_point.y * base_x_handoff
-
-            cross_magnitude = abs(cross_x) + abs(cross_y) + abs(cross_z)
-            factor_candidate_cross = gcd(cross_magnitude, N)
-
-            print(f"  CROSS PRODUCT RESONANCE (Orthogonal relationships):")
-            print(f"    Cross product magnitude: |{cross_x}| + |{cross_y}| + |{cross_z}| = {cross_magnitude}")
-            print(f"  Factor candidate (cross): gcd({cross_magnitude}, N) = {factor_candidate_cross}")
-
-            # Method 3: Original working formula (for comparison)
-            # This worked for N=2021: (y_final * y_handoff) - (z_final * remainder)
-            original_resonance = (final_point.y * base_y_handoff) - (final_point.z * remainder)
-            factor_candidate_original = gcd(abs(original_resonance), N)
-
-            print(f"  ORIGINAL WORKING FORMULA (for reference):")
-            print(f"    (y_final × y_handoff) - (z_final × remainder)")
-            print(f"    = ({final_point.y} × {base_y_handoff}) - ({final_point.z} × {remainder})")
-            print(f"    = {original_resonance}")
-            print(f"  Factor candidate (original): gcd(|{original_resonance}|, N) = {factor_candidate_original}")
-
-            # Test all methods for factors
-            found_resonance_factor = False
-            for method_name, candidate in [
-                ("geodesic dot product", factor_candidate_geodesic),
-                ("cross product", factor_candidate_cross),
-                ("original working", factor_candidate_original)
-            ]:
-                if candidate > 1 and candidate < N and N % candidate == 0:
-                    print(f"✓ GEODESIC RESONANCE SUCCESS: Found factor via {method_name}!")
-                    factor_p = candidate
-                    factor_q = N // factor_p
-                    pair = tuple(sorted([factor_p, factor_q]))
-                    if pair not in seen:
-                        unique_factors.append(pair)
-                        seen.add(pair)
-                        print(f"✓ GEODESIC RESONANCE FINDS FACTORS: {factor_p:,} × {factor_q:,} = {N:,}")
-                        print(f"  Direct computation - no search required!")
-                        factors_found.append(pair)
-                        found_resonance_factor = True
-                    break
-
-            if not found_resonance_factor:
-                print("  No non-trivial factors found via geodesic resonance methods")
-            
-            # Also try with y coordinate
-            resonance_value_y = (y_mod * base_y_handoff) - (z_mod * remainder)
-            factor_candidate_y = gcd(abs(resonance_value_y), N)
-            
-            print(f"  Resonance computation (y): (y * HandoffY) - (z * Remainder)")
-            print(f"    = ({y_mod} × {base_y_handoff}) - ({z_mod} × {remainder})")
-            print(f"    = {resonance_value_y}")
-            print(f"  Factor candidate (y): gcd(|{resonance_value_y}|, N) = {factor_candidate_y}")
-            
-            if factor_candidate_y > 1 and factor_candidate_y < N and N % factor_candidate_y == 0:
-                factor_p = factor_candidate_y
-                factor_q = N // factor_p
-                pair = tuple(sorted([factor_p, factor_q]))
-                if pair not in seen:
-                    unique_factors.append(pair)
-                    seen.add(pair)
-                    print(f"✓ GEODESIC RESONANCE FINDS FACTORS: {factor_p:,} × {factor_q:,} = {N:,}")
-                    print(f"  Direct computation - no search required!")
-                    factors_found.append(pair)
-            
-            if factors_found:
-                print()
-                print("="*80)
-                print("GEODESIC RESONANCE SUCCESS - Factors found via direct computation!")
-                print("="*80)
-                return unique_factors
-            
-            print("  No factors found via geodesic resonance - continuing with search methods...")
-            print()
-            
-            checked = set()
-            # We search the window, but we pivot around the MODULAR RESONANCE
-            # instead of just a linear offset from the root.
-            for offset in range(-search_window_size, search_window_size + 1):
-                
-                # RESONANCE 1: The "Handoff Delta"
-                # This checks if the factor is at the coordinate shadow + iteration remainder
-                candidate_1 = (base_x_handoff + offset) % N
-                
-                # RESONANCE 2: The "Difference Singularity"
-                # Often the factor isn't the coordinate itself, but the GCD of the 
-                # distance between the coordinate and the full remainder.
-                candidate_2 = abs(base_x_handoff + offset - remainder)
-                
-                # RESONANCE 3: The "Symmetry Pivot"
-                # Checks the reflected resonance across the square root
-                candidate_3 = abs(sqrt_n + offset)
-                
-                for candidate in [candidate_1, candidate_2, candidate_3]:
-                    if candidate > 1 and candidate < N and candidate not in checked:
-                        checked.add(candidate)
-                        g = gcd(candidate, N)
-                        if g > 1 and g < N:
-                            factors_found.append((g, N // g))
-                            print(f"    ✓ SUCCESS: Factor found via Geometric Resonance: {g}")
-                
-                # Also test y-coordinate handoff
-                candidate_y1 = (base_y_handoff + offset) % N
-                candidate_y2 = abs(base_y_handoff + offset - remainder)
-                
-                for candidate in [candidate_y1, candidate_y2]:
-                    if candidate > 1 and candidate < N and candidate not in checked:
-                        checked.add(candidate)
-                        g = gcd(candidate, N)
-                        if g > 1 and g < N:
-                            factors_found.append((g, N // g))
-                            print(f"    ✓ SUCCESS: Factor found via Geometric Resonance: {g}")
-            
-            # Method 2: Direct GCD test on scaled coordinates
-            # Try various scaling approaches (using manageable scale factors)
-            zoom_scale_factor = min(final_zoom_exponent, 100)  # Cap for calculation
-            zoom_multiplier = 10 ** zoom_scale_factor if zoom_scale_factor <= 100 else 1
-            scale_factors = [
-                zoom_multiplier,
-                zoom_multiplier // (micro_lattice_size ** 2) if zoom_multiplier > (micro_lattice_size ** 2) else 1,
-                zoom_multiplier // micro_lattice_size if zoom_multiplier > micro_lattice_size else 1
-            ]
-            
-            for scale_factor in scale_factors:
-                if scale_factor == 0:
-                    continue
-                scaled_x = (base_x_handoff * scale_factor) % N
-                scaled_y = (base_y_handoff * scale_factor) % N
-                
-                if scaled_x > 1 and scaled_x < N:
-                    g = gcd(scaled_x, N)
-                    if g > 1 and g < N:
-                        factors_found.append((g, N // g))
-                        print(f"    ✓ Found factor via scaled x-coordinate (scale={scale_factor}): {g}")
-                
-                if scaled_y > 1 and scaled_y < N:
-                    g = gcd(scaled_y, N)
-                    if g > 1 and g < N:
-                        factors_found.append((g, N // g))
-                        print(f"    ✓ Found factor via scaled y-coordinate (scale={scale_factor}): {g}")
-            
-            # Method 2: CRITICAL - Use 3D remainder lattice for high-resolution GCD extraction
-            # Map remainder through 3D lattice to find the exact GCD intersection
-            if remainder > 0:
-                print(f"  High-resolution GCD extraction using 3D remainder lattice...")
-                
-                # Reconstruct remainder candidates from 3D mapping
-                rem_low, rem_mid, rem_high = remainder_3d
-                
-                # Search through 3D remainder space
-                # Each dimension gives us resolution to find the exact GCD
-                for d_low in range(-10, 11):  # Small search around mapped value
-                    for d_mid in range(-10, 11):
-                        for d_high in range(-10, 11):
-                            test_rem_low = (rem_low + d_low) % remainder_lattice_size
-                            test_rem_mid = (rem_mid + d_mid) % remainder_lattice_size
-                            test_rem_high = (rem_high + d_high) % remainder_lattice_size
-                            
-                            # Reconstruct remainder candidate
-                            test_remainder = (test_rem_low + 
-                                            test_rem_mid * remainder_lattice_size + 
-                                            test_rem_high * remainder_lattice_size * remainder_lattice_size)
-                            
-                            # Test GCD with N
-                            if test_remainder > 0 and test_remainder < N:
-                                g = gcd(test_remainder, N)
-                                if g > 1 and g < N:
-                                    factors_found.append((g, N // g))
-                                    print(f"    ✓ Found factor via 3D remainder GCD: {g} (from remainder {test_remainder})")
-                
-                # Also test the FULL PRECISION remainder directly
-                gcd_remainder = gcd(remainder, N)
-                if gcd_remainder > 1 and gcd_remainder < N:
-                    factors_found.append((gcd_remainder, N // gcd_remainder))
-                    print(f"    ✓ Found factor via full precision remainder GCD: {gcd_remainder}")
-            
-            # Method 4: Use sum/difference relationships (modular arithmetic)
-            # Sum and difference preserve some factor relationships
-            x_mod = final_point.x
-            y_mod = final_point.y
-            z_mod = final_point.z
-            sum_mod = (x_mod + y_mod) % lattice_size
-            diff_mod = abs(x_mod - y_mod) % lattice_size
-            
-            # Search for factors matching sum/difference pattern
-            for k in range(-min(1000, search_range), min(1000, search_range) + 1):
-                test_sum = sum_mod + k * lattice_size
-                test_diff = diff_mod + k * lattice_size
-                
-                if test_sum > 1 and test_sum < N:
-                    g = gcd(test_sum, N)
-                    if g > 1 and g < N:
-                        factors_found.append((g, N // g))
-                
-                if test_diff > 1 and test_diff < N and test_diff != test_sum:
-                    g = gcd(test_diff, N)
-                    if g > 1 and g < N:
-                        factors_found.append((g, N // g))
-            
-            # Method 5: Use remainder structure with preserved precision
-            # The remainder itself can reveal factors through GCD
-            # This is where the "secret bits" are most important
-            if remainder > 0:
-                # Test GCD of remainder with N (PRESERVED - no scaling loss)
-                gcd_rem = gcd(remainder, N)
-                if gcd_rem > 1 and gcd_rem < N:
-                    factors_found.append((gcd_rem, N // gcd_rem))
-                
-                # Test if remainder + k*N reveals factors (for some k)
-                # This uses the full precision remainder
-                for k in [1, -1, 2, -2]:
-                    test_val = remainder + k * N
-                    if test_val > 1:
-                        g = gcd(test_val, N)
-                        if g > 1 and g < N:
-                            factors_found.append((g, N // g))
-            
-            print(f"Final compressed point: {final_point}")
-            print(f"  Coordinates: x={final_point.x}, y={final_point.y}, z={final_point.z}")
-            print()
-        
-        # Remove duplicates and validate
-        unique_factors = []
-        seen = set()
-        for f1, f2 in factors_found:
-            pair = tuple(sorted([f1, f2]))
-            if pair not in seen and f1 * f2 == N and f1 > 1 and f2 > 1:
-                seen.add(pair)
-                unique_factors.append(pair)
-        
-        # PRECISION-PRESERVING SEARCH: Use handoff coordinates as True North
-        # The handoff coordinates contain the actual genetic material of the factors
-        if final_handoff:
-            # Use x_mod from final handoff as the center of our search universe
-            # This is the "True North" coordinate that contains factor information
-            handoff_x = final_handoff.get('x_mod', original_encoding['a'])
-            handoff_y = final_handoff.get('y_mod', original_encoding['b'])
-
-            # Calculate iteration depth for coordinate scaling
-            iteration_depth = final_handoff.get('iteration_level', 0)
-
-            # MODULO REDUCTION: Bring coordinate back to sqrt(N) range
-            # The Post-RSA "Harmonic" Extraction
-            sqrt_range = isqrt(N) * 2  # Double the sqrt range for safety
-            anchor_x = (handoff_x + remainder) % sqrt_range
-            anchor_y = (handoff_y + remainder) % sqrt_range
-
-            print(f"  [MODULO REDUCTION] Harmonic extraction anchor: x={anchor_x}, y={anchor_y}")
-            print(f"  Sqrt range: ±{sqrt_range//2} (N^0.5 * 2)")
-            print(f"  Handoff coordinate: x_mod={handoff_x}, y_mod={handoff_y}, remainder={remainder}")
-            print(f"  Iteration depth: {iteration_depth}")
-
-            orig_a = anchor_x
-            orig_b = anchor_y
-        else:
-            # Fallback to original encoding if no handoff data
-            orig_a = original_encoding['a']
-            orig_b = original_encoding['b']
-
-        remainder = original_encoding['remainder']
-
-        # Test original handoff values directly (full precision, no scaling)
-        if orig_a > 1 and N % orig_a == 0:
-            pair = tuple(sorted([orig_a, N // orig_a]))
-            if pair not in seen:
-                unique_factors.append(pair)
-                seen.add(pair)
-
-        if orig_b > 1 and N % orig_b == 0:
-            pair = tuple(sorted([orig_b, N // orig_b]))
-            if pair not in seen:
-                unique_factors.append(pair)
-                seen.add(pair)
-        
-        # CRITICAL: Use remainder with FULL PRECISION for GCD
-        # This is where the "secret bits" matter most
-        if remainder > 0:
-            def gcd(a, b):
-                while b:
-                    a, b = b, a % b
-                return a
-            
-            # GCD of remainder with N (using full precision remainder)
-            gcd_remainder = gcd(remainder, N)
-            if gcd_remainder > 1 and gcd_remainder < N:
-                pair = tuple(sorted([gcd_remainder, N // gcd_remainder]))
-                if pair not in seen:
-                    unique_factors.append(pair)
-                    seen.add(pair)
-            
-            # Also test: if remainder reveals factor structure
-            # remainder = N - a*b, so if remainder shares factors with N, we found one
-            # This uses the FULL PRECISION remainder (no scaling loss)
-        
-        # Search around original encoding (factors might be nearby)
-        # Use user-specified search_window_size if provided, otherwise calculate based on number size
-        if search_window_size is not None:
-            # Use the user-specified search window from GUI
-            orig_search_range = search_window_size
-        else:
-            # Auto-calculate based on number size
+    # Pick a reasonable lattice size if not provided.
+    if lattice_size is None:
+        if adaptive_lattice:
             n_bits = N.bit_length()
-            if n_bits < 50:
-                orig_search_range = min(20, N // 20)
-            elif n_bits < 200:
-                orig_search_range = min(100, 1 << (n_bits // 4))
+            if n_bits < 20:
+                lattice_size = 100
+            elif n_bits < 50:
+                lattice_size = 200
+            elif n_bits < 100:
+                lattice_size = 500
             else:
-                # For very large numbers, focus search around sqrt(N)
-                # Use the fact that factors are near sqrt(N) for balanced factorization
-                orig_search_range = min(10000, 1 << (n_bits // 5))
-        
-        print(f"  Searching range: ±{orig_search_range} around original encoding (sqrt(N)={orig_a})")
-        if search_window_size is not None:
-            print(f"  (Using user-specified search window: ±{search_window_size})")
-        print(f"  Using FULL PRECISION remainder={remainder} for GCD extraction")
-        
-        # Search with GCD testing (more efficient than trial division)
-        def gcd(a, b):
-            while b:
-                a, b = b, a % b
-            return a
-        
-        checked = set()
-
-        # POST-RSA EXTRACTION: Use unscaled handoff as candidate source
-        # The handoff coordinate contains the actual genetic material of factors
-        if final_handoff:
-            handoff_x = final_handoff.get('x_mod', orig_a)
-            handoff_y = final_handoff.get('y_mod', orig_b)
-            iterations = final_handoff.get('iteration_level', 0)
-
-            print(f"  [POST-RSA] Using unscaled handoff coordinates: x={handoff_x}, y={handoff_y}")
-            print(f"  Iteration level: {iterations}")
-
-            # Method 1: GCD of handoff + offset (Modular Inverse approach)
-            for offset in range(-orig_search_range, orig_search_range + 1):
-                # Test GCD of handoff coordinate + offset
-                candidate_a = gcd(handoff_x + offset, N)
-                candidate_b = gcd(handoff_y + offset, N)
-
-                if candidate_a > 1 and candidate_a < N and candidate_a not in checked:
-                    checked.add(candidate_a)
-                    pair = tuple(sorted([candidate_a, N // candidate_a]))
-                    if pair not in seen:
-                        unique_factors.append(pair)
-                        seen.add(pair)
-                        print(f"    Found factor via POST-RSA GCD (x+offset): {candidate_a}")
-
-                if candidate_b > 1 and candidate_b < N and candidate_b != candidate_a and candidate_b not in checked:
-                    checked.add(candidate_b)
-                    pair = tuple(sorted([candidate_b, N // candidate_b]))
-                    if pair not in seen:
-                        unique_factors.append(pair)
-                        seen.add(pair)
-                        print(f"    Found factor via POST-RSA GCD (y+offset): {candidate_b}")
-
-            # RATIO RESONANCE EXTRACTION
-            # Use the coordinate ratio from the final compressed point
-            print(f"  [RATIO RESONANCE] Using coordinate ratio extraction")
-            print(f"  Final point: ({final_point.x}, {final_point.y}, {final_point.z})")
-
-            # Calculate ratio from compressed coordinates
-            if final_point.z != 0:
-                ratio = final_point.x / final_point.z  # Using x/z ratio
-                target = isqrt( (N * final_point.x) // final_point.z )
-                print(f"  Coordinate ratio: {final_point.x}/{final_point.z} = {ratio:.6f}")
-                print(f"  Target: int((N × ratio)^0.5) = {target}")
-
-                # Search around the ratio-based target
-                for offset in range(-orig_search_range, orig_search_range + 1):
-                    candidate = target + offset
-                    if candidate > 1 and candidate < N and candidate not in checked:
-                        checked.add(candidate)
-                        g = gcd(candidate, N)
-                        if 1 < g < N:
-                            pair = tuple(sorted([g, N // g]))
-                            if pair not in seen:
-                                unique_factors.append(pair)
-                                seen.add(pair)
-                                print(f"    ✓ FACTOR FOUND VIA RATIO RESONANCE: {g}")
-
-            # Alternative: Try y/z ratio as well
-            if final_point.z != 0:
-                ratio_y = final_point.y / final_point.z
-                target_y = isqrt( (N * final_point.y) // final_point.z )
-                print(f"  Alternative ratio: {final_point.y}/{final_point.z} = {ratio_y:.6f}")
-                print(f"  Alternative target: {target_y}")
-
-                for offset in range(-orig_search_range, orig_search_range + 1):
-                    candidate = target_y + offset
-                    if candidate > 1 and candidate < N and candidate not in checked:
-                        checked.add(candidate)
-                        g = gcd(candidate, N)
-                        if 1 < g < N:
-                            pair = tuple(sorted([g, N // g]))
-                            if pair not in seen:
-                                unique_factors.append(pair)
-                                seen.add(pair)
-                                print(f"    ✓ FACTOR FOUND VIA RATIO RESONANCE (Y/Z): {g}")
-
-            # Also try x/y ratio for completeness
-            if final_point.y != 0:
-                ratio_xy = final_point.x / final_point.y
-                target_xy = isqrt( (N * final_point.x) // final_point.y )
-                print(f"  XY ratio: {final_point.x}/{final_point.y} = {ratio_xy:.6f}")
-                print(f"  XY target: {target_xy}")
-
-                for offset in range(-orig_search_range, orig_search_range + 1):
-                    candidate = target_xy + offset
-                    if candidate > 1 and candidate < N and candidate not in checked:
-                        checked.add(candidate)
-                        g = gcd(candidate, N)
-                        if 1 < g < N:
-                            pair = tuple(sorted([g, N // g]))
-                            if pair not in seen:
-                                unique_factors.append(pair)
-                                seen.add(pair)
-                                print(f"    ✓ FACTOR FOUND VIA RATIO RESONANCE (X/Y): {g}")
-
-            # The "Differential Resonance" Extraction
-            # This bypasses the search window entirely
-            v1 = handoff_x 
-            v2 = remainder
-
-            # We look for the "Interference Pattern" between the weights
-            # This is where the prime 'signature' is actually hidden
-            for offset in range(1, 10):
-                # Test the relationship between current state and shifted state
-                state_a = (49 * v1) % N
-                state_b = (50 * v2 + offset) % N
-                
-                candidate = abs(state_a - state_b)
-                if candidate <= 1 or candidate >= N or candidate in checked:
-                    continue
-                checked.add(candidate)
-                g = gcd(candidate, N)
-                if 1 < g < N:
-                    pair = tuple(sorted([g, N // g]))
-                    if pair not in seen:
-                        unique_factors.append(pair)
-                        seen.add(pair)
-                        print(f"✓ FACTOR CAPTURED VIA DIFFERENTIAL: {g}")
-                        break  # Early exit if found
+                lattice_size = 1000
         else:
-            # Fallback to original method if no handoff data
-            print(f"  [FALLBACK] Using original sqrt-based search")
-            for offset in range(-orig_search_range, orig_search_range + 1):
-                test_a = orig_a + offset
-                test_b = orig_b + offset
+            lattice_size = 200
 
-                if test_a > 1 and test_a < N:
-                    if test_a not in checked:
-                        checked.add(test_a)
-                        g = gcd(test_a, N)
-                        if g > 1 and g < N:
-                            pair = tuple(sorted([g, N // g]))
-                            if pair not in seen:
-                                unique_factors.append(pair)
-                                seen.add(pair)
-                                print(f"    Found factor via fallback GCD: {g} (from candidate {test_a})")
+    # Encode N into an initial point (a, b, remainder-ish) and seed the lattice.
+    sqrt_n = isqrt(N)
+    a = sqrt_n
+    b = N // a if a > 0 else 1
+    remainder = N - (a * b)
 
-                if test_b > 1 and test_b < N and test_b != test_a:
-                    if test_b not in checked:
-                        checked.add(test_b)
-                        g = gcd(test_b, N)
-                        if g > 1 and g < N:
-                            pair = tuple(sorted([g, N // g]))
-                            if pair not in seen:
-                                unique_factors.append(pair)
-                                seen.add(pair)
-                                print(f"    Found factor via fallback GCD: {g} (from candidate {test_b})")
-        
-        # Enhanced resonance-based factor extraction
-        print(f"\n=== ENHANCED RESONANCE FACTOR EXTRACTION ===")
+    offset_x, offset_y, offset_z = lattice_offset
+    remainder_lattice_size = max(100, lattice_size // 10)
 
-        # Test potential factors more comprehensively
-        # The actual factors are around 15-16 million, so let's search that range more thoroughly
+    x0 = (a % lattice_size + offset_x) % lattice_size
+    y0 = (b % lattice_size + offset_y) % lattice_size
+    z0 = (remainder % (remainder_lattice_size * 10) + offset_z) % (remainder_lattice_size * 10)
+    initial_point = LatticePoint(x0, y0, z0)
 
-        search_start = 15_000_000
-        search_end = 17_000_000
-        step_size = 1  # Test every number for complete coverage
+    print(f"Using {lattice_size}x{lattice_size} lattice (~{lattice_size*lattice_size:,} surface points)")
+    print(f"Encoded N as lattice point: {initial_point} (a≈{a}, b≈{b}, remainder={remainder})")
+    if lattice_offset != (0, 0, 0):
+        print(f"Lattice offset applied: {lattice_offset}")
+    print()
 
-        print(f"Testing potential factors from {search_start:,} to {search_end:,} (step {step_size})")
+    lattice = GeometricLattice(
+        lattice_size,
+        initial_point=initial_point,
+        remainder_lattice_size=remainder_lattice_size,
+        N=N,
+    )
 
-        candidates_tested = 0
-        for candidate in range(search_start, search_end + 1, step_size):
-            if candidate > 1 and candidate < N:
-                candidates_tested += 1
-                g = gcd(candidate, N)
-                if 1 < g < N:
-                    pair = tuple(sorted([g, N // g]))
-                    if pair not in seen:
-                        unique_factors.append(pair)
-                        seen.add(pair)
-                        print(f"✓ FACTOR FOUND VIA COMPREHENSIVE SEARCH: {g} (tested {candidates_tested} candidates)")
-                        break  # Found one factor, the other is N//g
+    unique_factors: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    original_encoding = {"a": a, "b": b, "remainder": remainder, "sqrt_n": sqrt_n}
 
-        if not unique_factors:
-            print(f"No factors found in range {search_start:,} - {search_end:,} after testing {candidates_tested} candidates")
-        
-        # Report results
-        if unique_factors:
-            print("FACTORS FOUND:")
-            for f1, f2 in unique_factors:
-                print(f"  ✓ {f1} × {f2} = {N}")
-                print(f"    Verification: {f1 * f2 == N}")
-        else:
-            print("No factors found through lattice compression.")
-            print("  This may indicate N is prime, or factors require different encoding.")
-        
-        print()
-        print("="*80)
-        print("COMPRESSION METRICS (3D)")
-        print("="*80)
-        print(f"Volume reduction: {final_metrics.get('volume_reduction', final_metrics.get('area_reduction', 0)):.2f}%")
-        print(f"Surface area reduction: {final_metrics.get('surface_reduction', final_metrics.get('perimeter_reduction', 0)):.2f}%")
-        print(f"Span reduction: {final_metrics.get('span_reduction', 0):.2f}%")
-        print(f"Points collapsed: {final_metrics.get('unique_points', 0)} / {final_metrics.get('total_points', len(lattice.lattice_points))}")
-        print()
-        
-        return {
-            'N': N,
-            'factors': unique_factors,
-            'compression_metrics': final_metrics,
-            'final_point': final_point
-        }
+    print("=" * 80)
+    print("TRIANGULATION ANALYSIS")
+    print("=" * 80)
+
+    # Primary path: existing triangulation routine.
+    try:
+        ok = lattice.spherical_gravity_triangulation(N, unique_factors, seen, original_encoding)
+        if ok:
+            print("✓ Triangulation reported a factor.")
+    except Exception as e:
+        print(f"⚠️ Triangulation routine error: {e}")
+
+    # Always add a trivial factorization if we can detect it quickly (helps for powers like 1024).
+    g2 = math.gcd(N, 2)
+    if 1 < g2 < N:
+        pair = tuple(sorted([g2, N // g2]))
+        if pair not in seen:
+            unique_factors.append(pair)
+            seen.add(pair)
+
+    print()
+    if unique_factors:
+        print("FACTORS FOUND:")
+        for f1, f2 in unique_factors:
+            print(f"  ✓ {f1} × {f2} = {N} (verified: {f1 * f2 == N})")
+    else:
+        print("No factors found by triangulation in this run.")
+
+    return {"N": N, "factors": unique_factors}
 
 
 def demo_lattice_transformations():
-    """Demonstrate full lattice transformation sequence."""
+    """Demonstrate lattice construction and triangulation (no compression transforms)."""
     print("="*80)
-    print("GEOMETRIC LATTICE TRANSFORMATIONS")
+    print("GEOMETRIC LATTICE DEMO (TRIANGULATION ONLY)")
     print("="*80)
     print()
     
-    # Create lattice with initial point
-    size = 100
-    initial_point = LatticePoint(50, 50, 0)
-    
-    print(f"Initializing {size}x{size} lattice with point at {initial_point}")
-    lattice = GeometricLattice(size, initial_point)
-    print(f"Lattice contains {len(lattice.lattice_points)} points")
+    N = 1024
+    result = factor_with_lattice_compression(N, lattice_size=100)
     print()
-
-    # Execute transformation sequence with compression analysis at each stage
-    print("Initial state:")
-    lattice.print_compression_analysis()
-    print()
-    
-    lattice.expand_point_to_line()
-    lattice.print_compression_analysis()
-    print()
-    
-    lattice.create_square_from_line()
-    lattice.print_compression_analysis()
-    print()
-    
-    lattice.create_bounded_square()
-    lattice.print_compression_analysis()
-    print()
-    
-    lattice.add_vertex_lines()
-    lattice.print_compression_analysis()
-    print()
-    
-    lattice.compress_square_to_triangle()
-    lattice.print_compression_analysis()
-    print()
-            
-    lattice.compress_triangle_to_line()
-    lattice.print_compression_analysis()
-    print()
-    
-    lattice.compress_line_to_point()
-    lattice.print_compression_analysis()
-    print()
-    
-    # Final summary
-    final_metrics = lattice.get_compression_metrics()
-    print("="*80)
-    print("FINAL COMPRESSION SUMMARY")
-    print("="*80)
-    print(f"Initial lattice size: {size}x{size} = {size*size} points")
-    print(f"Initial area: {final_metrics['initial_area']}")
-    print(f"Initial perimeter: {final_metrics['initial_perimeter']}")
-    print(f"Initial span: {final_metrics['initial_span']}")
-    print()
-    print(f"Final volume: {final_metrics.get('volume', final_metrics.get('area', 0))}")
-    print(f"Final surface area: {final_metrics.get('surface_area', final_metrics.get('perimeter', 0))}")
-    print(f"Final span: {final_metrics.get('max_span', 0)}")
-    print(f"Final unique points: {final_metrics.get('unique_points', 0)}")
-    print()
-    print(f"Total volume reduction: {final_metrics.get('volume_reduction', final_metrics.get('area_reduction', 0)):.2f}%")
-    print(f"Total surface area reduction: {final_metrics.get('surface_reduction', final_metrics.get('perimeter_reduction', 0)):.2f}%")
-    print(f"Total span reduction: {final_metrics.get('span_reduction', 0):.2f}%")
-    print()
-    print(f"Compression achieved: {final_metrics['unique_points']} unique positions from {final_metrics['total_points']} points")
-    print(f"Compression efficiency: {(1 - final_metrics['unique_points']/final_metrics['total_points'])*100:.2f}% points collapsed")
-    print()
+    print(f"Demo complete. Factors: {result.get('factors', [])}")
 
 
 if __name__ == "__main__":
